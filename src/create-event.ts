@@ -1,8 +1,8 @@
-function props<T>(): T {
+export function props<T>(): T {
   return {} as T;
 }
 
-function createEvent<
+export function createEvent<
   S extends string,
   T,
   R extends ReturnType<typeof props<T>> | void = void
