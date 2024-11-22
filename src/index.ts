@@ -1,4 +1,11 @@
-import { assign, createActor, createMachine, fromCallback } from "xstate";
+import {
+  assign,
+  createActor,
+  createMachine,
+  DoneActorEvent,
+  fromCallback,
+  fromPromise,
+} from "xstate";
 import { createEvent, props } from "./create-event";
 
 // const m = createMachine({
@@ -156,7 +163,7 @@ import { createEvent, props } from "./create-event";
 //   - verified ("next" event transitions to "activation")
 // - activated (final state)
 
-function getCode() {
+function getServerCode() {
   return new Promise((res) => {
     setTimeout(() => res(123), 3000);
   });
@@ -188,15 +195,26 @@ interface UserData {
 
 const next = createEvent("NEXT");
 const complete = createEvent("COMPLETE", props<Partial<UserData>>());
-const verify = createEvent(
-  "VERIFY",
-  props<{ code: number; verificationCode: number }>()
-);
+const verify = createEvent("VERIFY", props<{ code: number }>());
+
+type MachineEvents =
+  | ReturnType<typeof next>
+  | ReturnType<typeof complete>
+  | ReturnType<typeof verify>
+  | DoneActorEvent<number, any>;
 
 type WizardMachineTypes = {
   context: {
     userData: Partial<UserData> | null;
+    userCode: number | null;
+    serverCode: number | null;
   };
+  events: MachineEvents;
+  actions:
+    | { type: "handleSetup" }
+    | { type: "setServerCode" }
+    | { type: "setUserCode" };
+  guards: { type: "setupHasAllInfo" } | { type: "verifyHasAllCodes" };
 };
 
 const wizardMachine = createMachine(
@@ -206,6 +224,8 @@ const wizardMachine = createMachine(
     types: {} as WizardMachineTypes,
     context: {
       userData: null,
+      userCode: null,
+      serverCode: null,
     },
     states: {
       [ProfileWizardState.SETUP]: {
@@ -243,15 +263,48 @@ const wizardMachine = createMachine(
       },
       [ProfileWizardState.VERIFICATION]: {
         initial: ProfileWizardState.VERIFICATION_UNVERIFIED,
+        invoke: {
+          src: fromPromise(() => getServerCode()),
+          onDone: [
+            {
+              target: ProfileWizardState.VERIFICATION_VERIFYING,
+              guard: "verifyHasAllCodes",
+              actions: ["setServerCode"],
+            },
+            {
+              actions: ["setServerCode"],
+            },
+          ],
+        },
         states: {
           [ProfileWizardState.VERIFICATION_UNVERIFIED]: {
             on: {
-              [verify.type]: {
-                target: ProfileWizardState.VERIFICATION_VERIFYING,
-              },
+              [verify.type]: [
+                {
+                  target: ProfileWizardState.VERIFICATION_VERIFYING,
+                  guard: "verifyHasAllCodes",
+                  actions: "setUserCode",
+                },
+                {
+                  actions: "setUserCode",
+                },
+              ],
             },
           },
-          [ProfileWizardState.VERIFICATION_VERIFYING]: {},
+          [ProfileWizardState.VERIFICATION_VERIFYING]: {
+            invoke: {
+              src: fromPromise(() => verificationCheck(true)),
+              onDone: [
+                {
+                  guard: ({ event }) => event.output,
+                  target: ProfileWizardState.VERIFICATION_VERIFIED,
+                },
+                {
+                  target: ProfileWizardState.VERIFICATION_UNVERIFIED,
+                },
+              ],
+            },
+          },
           [ProfileWizardState.VERIFICATION_VERIFIED]: {
             on: {
               [next.type]: {
@@ -270,20 +323,43 @@ const wizardMachine = createMachine(
     actions: {
       handleSetup: assign({
         userData: ({ context: { userData }, event }) => {
-          const { payload } = event as ReturnType<typeof complete>;
+          if (event.type !== complete.type) return userData;
+          const { payload } = event;
           const currentUserData = userData || {};
           return { ...currentUserData, ...payload };
+        },
+      }),
+      setServerCode: assign({
+        serverCode: ({ event, context }) => {
+          if (!("output" in event)) return context.serverCode;
+          return event.output;
+        },
+      }),
+      setUserCode: assign({
+        serverCode: ({ event, context }) => {
+          if (event.type !== verify.type || !event.payload?.code)
+            return context.userCode;
+          return event.payload.code;
         },
       }),
     },
     guards: {
       setupHasAllInfo: ({ context: { userData }, event }) => {
-        const { payload } = event as ReturnType<typeof complete>;
+        const { payload } = "payload" in event ? event : {};
         const { password, firstName, lastName, email } = {
           ...(userData || {}),
           ...payload,
         };
         return !!password && !!firstName && !!lastName && !!email;
+      },
+      verifyHasAllCodes: ({ context, event }) => {
+        // Handle the fromPromise event
+        if ("output" in event) return !!event.output && !!context.userCode;
+        // Handle the verify event
+        if (event.type === verify.type)
+          return !!context.serverCode && !!event.payload?.code;
+        // Handle all other events
+        return !!context.serverCode && !!context.userCode;
       },
     },
   }
@@ -294,7 +370,10 @@ actor.subscribe(({ context, value }) => console.log(value, context));
 actor.start();
 
 actor.send(complete({ firstName: "Ivan", lastName: "Ivanov" }));
-actor.send(next());
+// actor.send(next());
 actor.send(complete({ password: "123" }));
 actor.send(complete({ email: "ivan.ivanov@gmail.com" }));
+actor.send(next());
+
+actor.send(verify({ code: 123 }));
 actor.send(next());
