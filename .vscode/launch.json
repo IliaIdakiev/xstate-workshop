@@ -9,8 +9,9 @@
       "request": "launch",
       "name": "Launch Program",
       "skipFiles": ["<node_internals>/**"],
-      "preLaunchTask": "npm: build",
       "program": "${workspaceFolder}/dist/index.js",
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "npm: build",
       "sourceMaps": true,
       "internalConsoleOptions": "openOnSessionStart"
     }
