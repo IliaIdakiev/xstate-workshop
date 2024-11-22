@@ -267,7 +267,7 @@ const wizardMachine = createMachine(
           src: fromPromise(() => getServerCode()),
           onDone: [
             {
-              target: ProfileWizardState.VERIFICATION_VERIFYING,
+              target: `#wizard.${ProfileWizardState.VERIFICATION}.${ProfileWizardState.VERIFICATION_VERIFYING}`,
               guard: "verifyHasAllCodes",
               actions: ["setServerCode"],
             },
@@ -336,7 +336,7 @@ const wizardMachine = createMachine(
         },
       }),
       setUserCode: assign({
-        serverCode: ({ event, context }) => {
+        userCode: ({ event, context }) => {
           if (event.type !== verify.type || !event.payload?.code)
             return context.userCode;
           return event.payload.code;
