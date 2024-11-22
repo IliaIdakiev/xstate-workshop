@@ -4,7 +4,7 @@ or `npx tsdx create xstate-workshop` for node
 
 then `npm install xstate`
 
-1. Simple examples (live coding)
+1. Create a machine that starts an interval (setInterval) and each second it increments a value on the context by 1. We should have two states `running` and `idle`.
 
 2. Step 1: Create a wizard machine that contains this states:
 
