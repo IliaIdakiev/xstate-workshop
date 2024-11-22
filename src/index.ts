@@ -156,6 +156,18 @@ import { createEvent, props } from "./create-event";
 //   - verified ("next" event transitions to "activation")
 // - activated (final state)
 
+function getCode() {
+  return new Promise((res) => {
+    setTimeout(() => res(123), 3000);
+  });
+}
+
+function verificationCheck(result: boolean) {
+  return new Promise((res) => {
+    setTimeout(() => res(result), 3000);
+  });
+}
+
 enum ProfileWizardState {
   SETUP = "Setup",
   SETUP_INCOMPLETE = "Setup_incomplete",
@@ -167,55 +179,122 @@ enum ProfileWizardState {
   ACTIVATED = "Activated",
 }
 
-const next = createEvent("NEXT");
-const complete = createEvent("COMPLETE");
-const verify = createEvent("VERIFY");
+interface UserData {
+  email: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+}
 
-const wizardMachine = createMachine({
-  id: "wizard",
-  initial: ProfileWizardState.SETUP,
-  states: {
-    [ProfileWizardState.SETUP]: {
-      initial: ProfileWizardState.SETUP_INCOMPLETE,
-      states: {
-        [ProfileWizardState.SETUP_INCOMPLETE]: {
-          on: {
-            [complete.type]: {
-              target: ProfileWizardState.SETUP_COMPLETE,
+const next = createEvent("NEXT");
+const complete = createEvent("COMPLETE", props<Partial<UserData>>());
+const verify = createEvent(
+  "VERIFY",
+  props<{ code: number; verificationCode: number }>()
+);
+
+type WizardMachineTypes = {
+  context: {
+    userData: Partial<UserData> | null;
+  };
+};
+
+const wizardMachine = createMachine(
+  {
+    id: "wizard",
+    initial: ProfileWizardState.SETUP,
+    types: {} as WizardMachineTypes,
+    context: {
+      userData: null,
+    },
+    states: {
+      [ProfileWizardState.SETUP]: {
+        initial: ProfileWizardState.SETUP_INCOMPLETE,
+        states: {
+          [ProfileWizardState.SETUP_INCOMPLETE]: {
+            on: {
+              [complete.type]: [
+                {
+                  target: ProfileWizardState.SETUP_COMPLETE,
+                  guard: "setupHasAllInfo",
+                  actions: ["handleSetup"],
+                },
+                {
+                  actions: ["handleSetup"],
+                },
+              ],
+              // "*": {
+              //   actions: [
+              //     () => {
+              //       console.log("ERROR");
+              //     },
+              //   ],
+              // },
             },
           },
-        },
-        [ProfileWizardState.SETUP_COMPLETE]: {
-          on: {
-            [next.type]: {
-              target: `#wizard.${ProfileWizardState.VERIFICATION}`,
+          [ProfileWizardState.SETUP_COMPLETE]: {
+            on: {
+              [next.type]: {
+                target: `#wizard.${ProfileWizardState.VERIFICATION}`,
+              },
             },
           },
         },
       },
-    },
-    [ProfileWizardState.VERIFICATION]: {
-      initial: ProfileWizardState.VERIFICATION_UNVERIFIED,
-      states: {
-        [ProfileWizardState.VERIFICATION_UNVERIFIED]: {
-          on: {
-            [verify.type]: {
-              target: ProfileWizardState.VERIFICATION_VERIFYING,
+      [ProfileWizardState.VERIFICATION]: {
+        initial: ProfileWizardState.VERIFICATION_UNVERIFIED,
+        states: {
+          [ProfileWizardState.VERIFICATION_UNVERIFIED]: {
+            on: {
+              [verify.type]: {
+                target: ProfileWizardState.VERIFICATION_VERIFYING,
+              },
             },
           },
-        },
-        [ProfileWizardState.VERIFICATION_VERIFYING]: {},
-        [ProfileWizardState.VERIFICATION_VERIFIED]: {
-          on: {
-            [next.type]: {
-              target: `#wizard.${ProfileWizardState.ACTIVATED}`,
+          [ProfileWizardState.VERIFICATION_VERIFYING]: {},
+          [ProfileWizardState.VERIFICATION_VERIFIED]: {
+            on: {
+              [next.type]: {
+                target: `#wizard.${ProfileWizardState.ACTIVATED}`,
+              },
             },
           },
         },
       },
-    },
-    [ProfileWizardState.ACTIVATED]: {
-      type: "final",
+      [ProfileWizardState.ACTIVATED]: {
+        type: "final",
+      },
     },
   },
-});
+  {
+    actions: {
+      handleSetup: assign({
+        userData: ({ context: { userData }, event }) => {
+          const { payload } = event as ReturnType<typeof complete>;
+          const currentUserData = userData || {};
+          return { ...currentUserData, ...payload };
+        },
+      }),
+    },
+    guards: {
+      setupHasAllInfo: ({ context: { userData }, event }) => {
+        const { payload } = event as ReturnType<typeof complete>;
+        const { password, firstName, lastName, email } = {
+          ...(userData || {}),
+          ...payload,
+        };
+        return !!password && !!firstName && !!lastName && !!email;
+      },
+    },
+  }
+);
+
+const actor = createActor(wizardMachine);
+actor.subscribe(({ context, value }) => console.log(value, context));
+actor.start();
+
+actor.send(complete({ firstName: "Ivan", lastName: "Ivanov" }));
+actor.send(next());
+actor.send(complete({ password: "123" }));
+actor.send(complete({ email: "ivan.ivanov@gmail.com" }));
+actor.send(next());

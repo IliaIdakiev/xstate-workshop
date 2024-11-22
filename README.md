@@ -24,7 +24,7 @@ Hints: take a look at invoke, always, fromPromise, fromCallback.
 - profileSetup:
   - incomplete (user is required to fulled up - email, firstName, lastName, password). Only when we have all of those fields we will allow them to move to "completed".
   - complete (user info is filled up and we are waiting for the user to send "next" event)
-- verification: (upon entering the verification state we will eed to dispatch a request (use Promise with setTimeout to simulate a request to the server and return some code "123"))
+- verification: (upon entering the verification state we will need to dispatch a request (use Promise with setTimeout to simulate a request to the server and return some code "123"))
   - unverified ("verify event" transitions to "verifying")
   - verifying (when we enter "verifying" we need to send a another request with the code that we've received from the api call and a code that the user has entered. Simulate another API call using Promise and setTimeout in order to "check" if the two codes are valid. Upon successful check we will allow the user to move forward. Keep in mind that when the user has send the verification code the code that we load when we entered the parent state might not have completed yet so we need to wait for that code to get loaded first and then send the data. Handle both cases: when the initialization code is already loaded and when it's not loaded.)
   - verified ("next" event)
