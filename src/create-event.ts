@@ -7,7 +7,7 @@ export function createEvent<
   T,
   R extends ReturnType<typeof props<T>> | void = void
 >(type: S, eventProps?: R) {
-  const creator = (payload: typeof eventProps) => ({
+  const creator = (payload: R extends void ? void : R) => ({
     type,
     payload,
   });
